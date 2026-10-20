@@ -74,13 +74,18 @@ enum ShortcutBuilder {
         try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: infoURL)
 
         let command = LauncherScript.command(appPath: shortcut.appPath, bundleIdentifier: shortcut.bundleIdentifier)
-        try WorkflowDocument.data(command: command).write(to: contents.appendingPathComponent("document.wflow"))
+        let workflowURL = contents.appendingPathComponent("document.wflow")
+        try WorkflowDocument.data(command: command).write(to: workflowURL)
 
         try IconMaker.writeICNS(icon, to: resources.appendingPathComponent(iconName + ".icns"))
 
         // The stub's signature doesn't cover the files just added, so replace it with an ad-hoc
         // one, as Automator does. Extended attributes make codesign refuse.
         try Shell.run("/usr/bin/xattr", ["-cr", app.path])
+        // codesign treats a loose file directly in Contents as nested code that must already be
+        // signed, so sign the workflow on its own first (its signature goes in its extended
+        // attributes), then the app.
+        try Shell.run("/usr/bin/codesign", ["--force", "--sign", "-", workflowURL.path])
         try Shell.run("/usr/bin/codesign", ["--force", "--sign", "-", app.path])
 
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
